@@ -80,8 +80,8 @@ assert img_src.size==img_inpaint.size
 - \[x\] Model generation checkpoint
 - \[x\] Garment reconstruction checkpoint
 - \[x\] Base all tasks checkpoint
-- \[ \] Dataset preparation
-- \[ \] Training code
+- \[x\] Dataset preparation
+- \[x\] Training code
 
 ## Citation
 
