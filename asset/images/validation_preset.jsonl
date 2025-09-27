@@ -1,0 +1,4 @@
+{"condition_spatial": "./asset/images/model/model3.png", "condition_subject": "./asset/images/garment/garment3.png", "prompt": "Change her dress to brown dress", "height": 768, "width": 576}
+{"condition_spatial": "./asset/images/model/model4.png", "condition_subject": "./asset/images/garment/garment4.jpg", "prompt": "Change her pants to plaid trousers.", "height": 768, "width": 576}
+{"condition_spatial": null, "condition_subject": "./asset/images/model/model1.png", "prompt": "A plaid shirt", "height": 576, "width": 576}
+{"condition_spatial": null, "condition_subject": "./asset/images/garment/garment3.jpg", "prompt": "A smiling woman with the garment walking on the street", "height": 576, "width": 576}
