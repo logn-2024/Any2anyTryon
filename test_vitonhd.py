@@ -82,7 +82,7 @@ def load_models(model_path, device="cuda"):
 
     from diffusers.utils.torch_utils import randn_tensor
     @staticmethod
-    def _prepare_latent_image_ids(batch_size, height, width, device, dtype, target_width=-1, tryon=False):
+    def _prepare_latent_image_ids(batch_size, height, width, device, dtype, target_width=-1, edit=False):
         latent_image_ids = torch.zeros(height, width, 3)
         if target_width==-1:
             latent_image_ids[..., 1] = latent_image_ids[..., 1] + torch.arange(height)[:, None]
@@ -91,7 +91,7 @@ def load_models(model_path, device="cuda"):
             latent_image_ids[:, :-target_width, 0] = 1
             # height keep as before
             latent_image_ids[..., 1] = latent_image_ids[..., 1] + torch.arange(height)[:, None]
-            if tryon:
+            if edit:
                 latent_image_ids[:, target_width:-target_width, 0] = 2
                 # left
                 latent_image_ids[:, :-target_width, 2] = latent_image_ids[:, :-target_width, 2] + torch.arange(width-target_width)[None, :]
@@ -114,7 +114,7 @@ def load_models(model_path, device="cuda"):
         height,
         width,
         target_width,
-        tryon,
+        edit,
         dtype,
         device,
         generator,
@@ -132,7 +132,7 @@ def load_models(model_path, device="cuda"):
         width = 2 * (int(width) // (self.vae_scale_factor * 2))
         shape = (batch_size, num_channels_latents, height, width)
         sp = 2 * (int(target_width) // (self.vae_scale_factor * 2))//2 # -1 
-        latent_image_ids = self._prepare_latent_image_ids(batch_size, height // 2, width // 2, device, dtype, sp, tryon)
+        latent_image_ids = self._prepare_latent_image_ids(batch_size, height // 2, width // 2, device, dtype, sp, edit)
 
         image = image.to(device=device, dtype=dtype)
         # image_latents = self._encode_vae_image(image=image, generator=generator)
@@ -370,7 +370,7 @@ def generate_image(pipe, prompt, model_image, garment_image, height=512, width=3
         height=height,
         width=image.width,
         target_width=width,
-        tryon=True,
+        edit=True,
         guidance_scale=guidance_scale,
         num_inference_steps=30,
         max_sequence_length=512,

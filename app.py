@@ -11,6 +11,7 @@ from diffusers import FluxTransformer2DModel, AutoencoderKL
 from diffusers.hooks import apply_group_offloading
 from transformers import T5EncoderModel, CLIPTextModel
 from src.pipeline_tryon import FluxTryonPipeline
+from src.utils import crop_to_multiple_of_16, resize_and_pad_to_size, resize_by_height
 from optimum.quanto import freeze, qfloat8, quantize
 
 device = torch.device("cuda")
@@ -49,7 +50,7 @@ def load_models(device=device, torch_dtype=torch_dtype,group_offloading=False):
     # pipe.enable_sequential_cpu_offload()
     pipe.load_lora_weights(
         "loooooong/Any2anyTryon",
-        weight_name="dev_lora_any2any_alltasks.safetensors",
+        weight_name="dev_lora_any2any_multi.safetensors",
         adapter_name="tryon",
     )
     pipe.remove_all_hooks()
@@ -88,71 +89,9 @@ def load_models(device=device, torch_dtype=torch_dtype,group_offloading=False):
     pipe.to(device=device)
     return pipe
 
-def crop_to_multiple_of_16(img):
-    width, height = img.size
-    
-    # Calculate new dimensions that are multiples of 8
-    new_width = width - (width % 16)  
-    new_height = height - (height % 16)
-    
-    # Calculate crop box coordinates
-    left = (width - new_width) // 2
-    top = (height - new_height) // 2
-    right = left + new_width
-    bottom = top + new_height
-    
-    # Crop the image
-    cropped_img = img.crop((left, top, right, bottom))
-    
-    return cropped_img
-
-def resize_and_pad_to_size(image, target_width, target_height):
-    # Convert numpy array to PIL Image if needed
-    if isinstance(image, np.ndarray):
-        image = Image.fromarray(image)
-        
-    # Get original dimensions
-    orig_width, orig_height = image.size
-    
-    # Calculate aspect ratios
-    target_ratio = target_width / target_height
-    orig_ratio = orig_width / orig_height
-    
-    # Calculate new dimensions while maintaining aspect ratio
-    if orig_ratio > target_ratio:
-        # Image is wider than target ratio - scale by width
-        new_width = target_width
-        new_height = int(new_width / orig_ratio)
-    else:
-        # Image is taller than target ratio - scale by height
-        new_height = target_height
-        new_width = int(new_height * orig_ratio)
-        
-    # Resize image
-    resized_image = image.resize((new_width, new_height))
-    
-    # Create white background image of target size
-    padded_image = Image.new('RGB', (target_width, target_height), 'white')
-    
-    # Calculate padding to center the image
-    left_padding = (target_width - new_width) // 2
-    top_padding = (target_height - new_height) // 2
-    
-    # Paste resized image onto padded background
-    padded_image.paste(resized_image, (left_padding, top_padding))
-    
-    return padded_image, left_padding, top_padding, target_width - new_width - left_padding, target_height - new_height - top_padding
-
-def resize_by_height(image, height):
-    if isinstance(image, np.ndarray):
-        image = Image.fromarray(image)
-    # image is a PIL image
-    image = image.resize((int(image.width * height / image.height), height))
-    return crop_to_multiple_of_16(image)
-
 # @spaces.GPU()
 @torch.no_grad
-def generate_image(prompt, model_image, garment_image, height=512, width=384, seed=0, guidance_scale=3.5, show_type="follow model image", num_inference_steps=30):
+def generate_image(prompt, model_image, garment_image, height=512, width=384, seed=0, guidance_scale=3.5, show_type="follow spatial image", num_inference_steps=30):
     height, width = int(height), int(width)
     width = width - (width % 16)  
     height = height - (height % 16)
@@ -194,7 +133,7 @@ def generate_image(prompt, model_image, garment_image, height=512, width=384, se
         height=height,
         width=image.width,
         target_width=width,
-        tryon=has_model_image and has_garment_image,
+        edit=has_model_image,
         guidance_scale=guidance_scale,
         num_inference_steps=num_inference_steps,
         max_sequence_length=512,
@@ -209,7 +148,7 @@ def generate_image(prompt, model_image, garment_image, height=512, width=384, se
     image = pipe.vae.decode(latents, return_dict=False)[0]
     image = pipe.image_processor.postprocess(image, output_type="pil")[0]
     output = image
-    if show_type=="follow model image" and has_model_image and has_garment_image:
+    if show_type=="follow spatial image" and has_model_image and has_garment_image:
         output = output.crop((lp, tp, output.width-rp, output.height-bp)).resize((input_width, input_height))
     
     return output
@@ -270,9 +209,9 @@ def launch_demo():
         gr.Markdown("Demo(experimental) for [Any2AnyTryon: Leveraging Adaptive Position Embeddings for Versatile Virtual Clothing Tasks](https://arxiv.org/abs/2501.15891) ([Code](https://github.com/logn-2024/Any2anyTryon)).") 
         with gr.Row():
             with gr.Column():
-                model_image = gr.Image(label="Model Image", type="numpy", interactive=True,)
+                model_image = gr.Image(label="Spatial Image", type="numpy", interactive=True,)
                 with gr.Row():
-                    garment_image = gr.Image(label="Garment Image", type="numpy", interactive=True,)
+                    garment_image = gr.Image(label="Subject Image", type="numpy", interactive=True,)
                     with gr.Column():
                         prompt = gr.Textbox(
                             label="Prompt",
@@ -288,7 +227,7 @@ def launch_demo():
                         with gr.Accordion("Advanced Settings", open=False):
                             guidance_scale = gr.Number(label="Guidance Scale", value=3.5)
                             num_inference_steps = gr.Number(label="Inference Steps", value=15)
-                            show_type = gr.Radio(label="Show Type",choices=["follow model image", "follow height & width", "all outputs"],value="follow model image")
+                            show_type = gr.Radio(label="Show Type",choices=["follow spatial image", "follow height & width", "all outputs"],value="follow spatial image")
                             auto_ar = gr.Checkbox(label="Detect Image Size(From Uploaded Images)", value=False, visible=True,)
                 btn = gr.Button("Generate")
             
@@ -299,6 +238,7 @@ def launch_demo():
                             "<MODEL> a person with fashion garment. <GARMENT> a garment. <TARGET> model with fashion garment",
                             "<MODEL> a person with fashion garment. <TARGET> the same garment laid flat.",
                             "<GARMENT> The image shows a fashion garment. <TARGET> a smiling person with the garment in white background",
+                            "Change the shirt to the fashion garment.",
                         ],
                         inputs=prompt,
                         label="Example Prompts",
@@ -309,15 +249,23 @@ def launch_demo():
                         model1, model2, model3, model4
                     ],
                     inputs=model_image,
-                    label="Example Model Images"
+                    label="Example Spatial Images"
                 )
-                example_garment = gr.Examples(
-                    examples=[
-                        garment1, garment2, garment3, garment4
-                    ],
-                    inputs=garment_image,
-                    label="Example Garment Images"
-                )
+                with gr.Row():
+                    example_garment = gr.Examples(
+                        examples=[
+                            garment1, garment2, garment3, garment4
+                        ],
+                        inputs=garment_image,
+                        label="Example Subject Garment"
+                    )
+                    example_model = gr.Examples(
+                        examples=[
+                            model1, model2, model3, model4
+                        ],
+                        inputs=garment_image,
+                        label="Example Subject Model"
+                    )
 
         # Update dimensions when images change
         model_image.change(fn=update_dimensions, 
@@ -342,7 +290,7 @@ def launch_demo():
                 576, 576
             ],
             [
-                '''<MODEL> a man with gray hair and a beard wearing a black jacket and sunglasses, standing in front of a body of water with mountains in the background and a cloudy sky above <GARMENT> a black and white striped t-shirt with a red heart embroidered on the chest <TARGET> ''',
+                '''<MODEL> a man with gray hair and a beard wearing a black jacket and sunglasses, standing in front of a body of water with mountains in the background and a cloudy sky above <GARMENT> a black and white striped t-shirt with a red heart embroidered on the chest <TARGET> model with fashion garment''',
                 model2,
                 garment2,
                 576, 576
