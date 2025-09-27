@@ -3,7 +3,7 @@ optimum-quanto==0.2.6
 peft==0.14.0
 sentencepiece==0.2.0
 transformers==4.44.2
-diffusers @ git+https://github.com/huggingface/diffusers@dc62e6931e3aac1d78375928693186764dcb8492
+diffusers==0.33.0
 datasets
 pandas==2.2.3
 gradio
